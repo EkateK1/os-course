@@ -531,7 +531,7 @@ int main(int arg, char** args) {
   print_params(&params);
 
   if (!is_valid(&params)) {
-    printf("Invalid args\n");
+    printf("Invalid args \n");
     return 1;
   }
 
