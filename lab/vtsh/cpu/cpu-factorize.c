@@ -57,20 +57,32 @@ size_t count(unsigned long long** res, unsigned long long arg, size_t* len) {
 }
 
 int main(int argc, char* argv[]) {
+  char* end;
   if (argv[1] == NULL) {
     return 1;
   }
-  char* end;
-  unsigned long long arg = strtoull(argv[1], &end, 10);
-  unsigned long long* res = malloc(sizeof(unsigned long long) * 3);
-  size_t len = 3;
-
-  size_t res_len = count(&res, arg, &len);
-
-  for (size_t i = 0; i < res_len; i++) {
-    printf("%lld ", res[i]);
+  long iterations = 1;
+  if (argv[2] != NULL) {
+    iterations = strtol(argv[2], &end, 10);
+    if (iterations < 1)
+      iterations = 1;
   }
-  printf("\n");
-  free(res);
+
+  for (long i = 0; i < iterations; i++) {
+    unsigned long long arg = strtoull(argv[1], &end, 10);
+    unsigned long long* res = malloc(sizeof(unsigned long long) * 3);
+    size_t len = 3;
+
+    size_t res_len = count(&res, arg, &len);
+
+    for (size_t i = 0; i < res_len; i++) {
+      printf("%lld ", res[i]);
+    }
+    printf("\n");
+    free(res);
+  }
   return 0;
 }
+
+//  /Users/ekaterinakulesova/os-course/lab/vtsh/build/cpu/cpu-factorize
+//  1125899906842624 5

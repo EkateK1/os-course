@@ -99,51 +99,66 @@ int main(int arg, char* args[]) {
     return 1;
   }
 
+  char* end;
+  long iterations = 1;
+  if (args[3] != NULL) {
+    iterations = strtol(args[3], &end, 10);
+    if (iterations < 1)
+      iterations = 1;
+  }
+
   FILE* fptr;
 
-  fptr = fopen(args[1], "r");
-  if (fptr == NULL) {
-    printf("Can not open file %s\n", args[1]);
-    return 1;
-  }
-
-  struct table table1 = read_table(fptr);
-  // print_table(&table1);
-  fclose(fptr);
-
-  fptr = fopen(args[2], "r");
-  if (fptr == NULL) {
-    printf("Can not open file %s\n", args[2]);
-    return 1;
-  }
-
-  struct table table2 = read_table(fptr);
-  // print_table(&table2);
-  fclose(fptr);
-
-  struct element* hashtable = hashtable_creating(&table1);
-  if (hashtable == NULL) {
-    printf("Calloc problem: %s\n", strerror(errno));
-    return 1;
-  }
-
-  //   for (int i = 0; i < table1.len; i++) {
-  //     printf("%d %d %s\n", i, hashtable[i].id, hashtable[i].str);
-  //   }
-
-  char* res_filename = "result.txt";
-  fptr = fopen(res_filename, "w+");
-
-  for (size_t i = 0; i < table2.len; i++) {
-    struct element element = table2.elements[i];
-    char* res_str = compare(&element, hashtable, &table1.len);
-    if (res_str != NULL) {
-      fprintf(fptr, "%s %s\n", res_str, element.str);
-      printf("%s %s\n", res_str, element.str);
+  for (long i = 0; i < iterations; i++) {
+    fptr = fopen(args[1], "r");
+    if (fptr == NULL) {
+      printf("Can not open file %s\n", args[1]);
+      return 1;
     }
-  }
 
-  free(hashtable);
+    struct table table1 = read_table(fptr);
+    // print_table(&table1);
+    fclose(fptr);
+
+    fptr = fopen(args[2], "r");
+    if (fptr == NULL) {
+      printf("Can not open file %s\n", args[2]);
+      return 1;
+    }
+
+    struct table table2 = read_table(fptr);
+    // print_table(&table2);
+    fclose(fptr);
+
+    struct element* hashtable = hashtable_creating(&table1);
+    if (hashtable == NULL) {
+      printf("Calloc problem: %s\n", strerror(errno));
+      return 1;
+    }
+
+    //   for (int i = 0; i < table1.len; i++) {
+    //     printf("%d %d %s\n", i, hashtable[i].id, hashtable[i].str);
+    //   }
+
+    char* res_filename = "result.txt";
+    fptr = fopen(res_filename, "w+");
+
+    for (size_t i = 0; i < table2.len; i++) {
+      struct element element = table2.elements[i];
+      char* res_str = compare(&element, hashtable, &table1.len);
+      if (res_str != NULL) {
+        fprintf(fptr, "%s %s\n", res_str, element.str);
+        printf("%s %s\n", res_str, element.str);
+      }
+    }
+
+    free(hashtable);
+    printf("\n");
+  }
 
   return 0;
 }
+
+// /Users/ekaterinakulesova/os-course/lab/vtsh/build/ema/ema-join-hash
+// /Users/ekaterinakulesova/os-course/lab/vtsh/ema/table1.txt
+// /Users/ekaterinakulesova/os-course/lab/vtsh/ema/table2.txt

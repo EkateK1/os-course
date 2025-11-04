@@ -142,7 +142,7 @@ void random_bytes(void* buf, size_t size) {
 bool check_range(struct params* params) {
   if (params->range_max - params->range_min + 1 <
       params->block_size * params->block_count) {
-    printf("Range is smaller than you need to read\n");
+    printf("Range is smaller than you need\n");
     return false;
   }
   return true;
@@ -238,6 +238,7 @@ bool rw_simple(int file_descr, struct params* params) {
 
   if (params->range_min != 0 || params->range_max != 0) {
     if (!check_range(params)) {
+      free(buf);
       return false;
     }
   }
@@ -245,8 +246,10 @@ bool rw_simple(int file_descr, struct params* params) {
   if ((params->type == 's') && (params->range_min != 0)) {
     if (params->range_min != 0) {
       off_t offset_res = lseek(file_descr, params->range_min, SEEK_SET);
-      if (offset_res == -1)
+      if (offset_res == -1) {
+        free(buf);
         return false;
+      }
     }
   }
 
@@ -299,7 +302,7 @@ bool rw_simple(int file_descr, struct params* params) {
     free(buf);
     return res;
   }
-
+  free(buf);
   return true;
 }
 
@@ -445,6 +448,7 @@ bool rw_direct(int file_descr, struct params* params) {
 
   if (params->range_min != 0 || params->range_max != 0) {
     if (!check_range(params)) {
+      free(buf_raw);
       return false;
     }
     min_off = params->range_min;
@@ -505,6 +509,7 @@ bool rw_direct(int file_descr, struct params* params) {
     free(buf_raw);
     return res;
   }
+  free(buf_raw);
   return true;
 }
 
@@ -543,10 +548,21 @@ int main(int arg, char** args) {
     return 1;
   }
 
-  if (params.direct) {
-    rw_direct(file_descr, &params);
-  } else {
-    rw_simple(file_descr, &params);
+  char* end;
+  long iterations = 1;
+  if (args[8] != NULL) {
+    iterations = strtol(args[8], &end, 10);
+    if (iterations < 1)
+      iterations = 1;
+  }
+
+  for (long i = 0; i < iterations; i++) {
+    if (params.direct) {
+      rw_direct(file_descr, &params);
+    } else {
+      rw_simple(file_descr, &params);
+    }
+    printf("\n");
   }
   close(file_descr);
   return 0;
