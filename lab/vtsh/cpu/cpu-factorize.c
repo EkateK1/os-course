@@ -1,33 +1,57 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+bool is_prime(unsigned long long x) {
+  unsigned long long i = 2;
+  while (i * i <= x) {
+    if (x % i == 0) {
+      return false;
+    }
+    i++;
+  }
+  return true;
+}
 
 size_t count(unsigned long long** res, unsigned long long arg, size_t* len) {
   unsigned long long i = 2;
   size_t count = 0;
-  while (i * i < arg) {
+  bool prime = false;
+  while (i * i <= arg) {
+    if (is_prime(arg)) {
+      prime = true;
+      break;
+    }
     if (arg % i == 0) {
-      if (*len - count >= 2) {
-        (*res)[count] = i;
-        (*res)[count + 1] = arg / i;
-        count += 2;
-
-      } else {
+      if (*len == count) {
         *len *= 2;
         *res = realloc(*res, *len * sizeof(unsigned long long));
         (*res)[count] = i;
-        (*res)[count + 1] = arg / i;
-        count += 2;
+        count++;
+      } else {
+        (*res)[count] = i;
+        count++;
       }
+      arg = arg / i;
+      i = 1;
     }
     i++;
   }
-  if (i * i == arg) {
-    if (*len - count < 1) {
+
+  if (is_prime(arg)) {
+    prime = true;
+  }
+
+  if (prime) {
+    if (*len == count) {
       *len += 1;
       *res = realloc(*res, *len * sizeof(unsigned long long));
+      (*res)[count] = arg;
+      count++;
+    } else {
+      (*res)[count] = arg;
+      count++;
     }
-    (*res)[count] = i;
-    count++;
   }
   return count;
 }

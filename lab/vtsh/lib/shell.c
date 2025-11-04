@@ -1,3 +1,4 @@
+
 #include <errno.h>
 #include <sched.h>
 #include <stdbool.h>
@@ -107,30 +108,6 @@ int run(char** buf, size_t* len) {
 
     char** args = parse_args(command1, comm1_len, DEL);
 
-    // pid_t pid = fork();
-    // if (pid == 0) {
-    //   int res = execvp(args[0], args);
-    //   if (res == -1) {
-    //     if (strcmp(strerror(errno), "No such file or directory") == 0) {
-    //       printf("Command not found\n");
-    //     } else {
-    //       printf("%s\n", strerror(errno));
-    //     }
-    //   } else {
-    //     exit(0);
-    //   }
-    //   exit(1);
-    // } else if (pid > 0) {
-    //   int status;
-    //   waitpid(pid, &status, 0);
-    //   if (WIFEXITED(status)) {
-    //     int code = WEXITSTATUS(status);
-    //     if (code == 0) {
-    //       shell_or = NULL;
-    //     }
-    //   }
-    // }
-
     clone_try(args, &shell_or);
 
     free(args);
@@ -142,3 +119,5 @@ int run(char** buf, size_t* len) {
   }
   return 0;
 }
+
+// lflfflflflflfllff
