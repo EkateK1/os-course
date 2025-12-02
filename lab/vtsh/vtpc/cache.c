@@ -11,7 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define CACHE_SIZE 50
+#define CACHE_SIZE 80
 #define PAGE_SIZE 4096
 
 struct cache_page {
