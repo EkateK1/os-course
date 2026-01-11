@@ -18,19 +18,35 @@ static dev_t vtkm_dev;
 static struct cdev vtkm_cdev;
 static struct class *vtkm_class;
 
+int vtkm_open(struct inode *inode, struct file *file){
+  return 0;
+}
+
+int vtkm_close(struct inode *inode, struct file *file){
+  return 0;
+}
+
+int vtkm_ioctl(){
+  return 0;
+}
 
 static const struct file_operations vtkm_fops = {
     .owner = THIS_MODULE
+    .open = vtkm_open,
+    .ioctl = vtkm_ioctl,
+    .close = vtkm_close
   };
 
 static int __init vtkm_init(void) {
   LOG("VTKM joined the kernel\n");
+
   int ret;
   ret = alloc_chrdev_region(&vtkm_dev, 0, 1, VTKM_DEV_NAME);
   if (ret) {
     LOG("alloc_chrdev_region failed: %d\n", ret);
     return ret;
   }
+
   cdev_init(&vtkm_cdev, &vtkm_fops);
   ret = cdev_add(&vtkm_cdev, vtkm_dev, 1);
   if (ret)
@@ -52,16 +68,19 @@ static int __init vtkm_init(void) {
 
   err_class:
     class_destroy(vtkm_class);
-    vtkm_class = NULL;
-  err_chrdev:
-    unregister_chrdev_region(vtkm_dev, 1);
-    return ret;
   err_cdev:
     cdev_del(&vtkm_cdev);
+  err_chrdev:
+    unregister_chrdev_region(vtkm_dev, 1);
     return ret;
 }
 
 static void __exit vtkm_exit(void) {
+  device_destroy(vtkm_class, vtkm_dev);
+  class_destroy(vtkm_class);
+  cdev_del(&vtkm_cdev);
+  unregister_chrdev_region(vtkm_dev, 1);
+
   LOG("VTKM left the kernel\n");
 }
 

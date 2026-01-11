@@ -1,0 +1,1 @@
+#define VTKM_DEV_NAME "vtkm"
