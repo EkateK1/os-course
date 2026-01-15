@@ -14,27 +14,61 @@ MODULE_DESCRIPTION("A simple kernel module");
 
 #define LOG(fmt, ...) pr_info("[" MODULE_NAME "]: " fmt, ##__VA_ARGS__)
 
-static dev_t vtkm_dev;
-static struct cdev vtkm_cdev;
-static struct class *vtkm_class;
+dev_t vtkm_dev;
+struct cdev vtkm_cdev;
+struct class* vtkm_class;
 
-int vtkm_open(struct inode *inode, struct file *file){
+static struct net* get_net_by_pid(int pid)
+{
+    struct net* net;
+
+    if (pid == 0) {
+        net = get_net(current->nsproxy->net_ns);
+        return net;
+    }
+
+    net = get_net_ns_by_pid(pid);
+    if (IS_ERR(net))
+        return NULL;
+
+    return net;
+}
+
+static int count (struct net* net, struct tcp_req* req){
+  struct inet_hashinfo info = net->ipv4.tcp_death_row.hashinfo;
+  
+}
+
+static long vtkm_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
+  struct tcp_req req;
+  struct net* net;
+  int res;
+
+  if (copy_from_user(&req, (void __user*)arg, sizeof(req)))
+    return -EFAULT;
+
+  net = get_net_by_pid(req.pid);
+  if (!net)
+    return -EINVAL;
+
+  rcu_read_lock();
+  res = count(net, &req);
+  rcu_read_unlock();
+
+  put_net(net);
+
+  if (res)
+    return res;
+
+  if (copy_to_user((void __user*)arg, &req, sizeof(req)))
+    return -EFAULT;
+
   return 0;
 }
 
-int vtkm_close(struct inode *inode, struct file *file){
-  return 0;
-}
-
-int vtkm_ioctl(){
-  return 0;
-}
-
-static const struct file_operations vtkm_fops = {
-    .owner = THIS_MODULE
-    .open = vtkm_open,
-    .ioctl = vtkm_ioctl,
-    .close = vtkm_close
+const struct file_operations vtkm_fops = {
+    .owner = THIS_MODULE,
+    .unlocked_ioctl = vtkm_ioctl
   };
 
 static int __init vtkm_init(void) {
