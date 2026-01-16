@@ -85,9 +85,6 @@ static void fill_stats(struct sock* sk, struct tcp_data* data, int sl){
 	if (state == TCP_LISTEN)
 		rx_queue = READ_ONCE(sk->sk_ack_backlog);
 	else
-		/* Because we don't lock the socket,
-		 * we might find a transient negative value.
-		 */
 		rx_queue = max_t(int, READ_ONCE(tp->rcv_nxt) - READ_ONCE(tp->copied_seq), 0);
 
   data->tx_queue = READ_ONCE(tp->write_seq) - tp->snd_una;
@@ -111,10 +108,75 @@ static void fill_stats(struct sock* sk, struct tcp_data* data, int sl){
 		    (tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh));
 }
 
+static void fill_stats_timewait(struct inet_timewait_sock *tw, struct tcp_data* data, int sl){
+  long delta = tw->tw_timer.expires - jiffies;
+	__be32 dest, src;
+	__u16 destp, srcp;
+
+	dest  = tw->tw_daddr;
+	src   = tw->tw_rcv_saddr;
+	destp = ntohs(tw->tw_dport);
+	srcp  = ntohs(tw->tw_sport);
+
+  data->sl = sl;
+  data->src = src;
+  data->dst = dest;
+  data->srcp = srcp;
+  data->dstp = destp;
+
+  data->state = tw->tw_substate;
+  data->tx_queue = 0;
+  data->rx_queue = 0;
+  data->timer_active = 3;
+  data->tm_when =  jiffies_delta_to_clock_t(delta);
+  data->retrnsmt = 0;
+  data->uid = 0;
+  data->timeout = 0;
+  data->inode = 0;
+  data->refcount = refcount_read(&tw->tw_refcnt);
+  data->sk = tw;
+
+  data->rto = 0;
+  data->ato = 0;
+  data->qack_pingpong = 0;
+  data->snd_cwnd = 0;
+  data->snd_ssthresh_or_fqlen = 0;
+}
+
+static void fill_stats_new_recv(struct request_sock *req, struct tcp_data* data, int sl){
+  const struct inet_request_sock *ireq = inet_rsk(req);
+	long delta = req->rsk_timer.expires - jiffies;
+
+  data->sl = sl;
+  data->src = ireq->ir_loc_addr;
+  data->dst = ireq->ir_rmt_addr;
+  data->srcp = ireq->ir_num;
+  data->dstp = ntohs(ireq->ir_rmt_port);
+
+  data->state = TCP_SYN_RECV;
+  data->tx_queue = 0;
+  data->rx_queue = 0;
+  data->timer_active = 1;
+  data->tm_when =  jiffies_delta_to_clock_t(delta);
+  data->retrnsmt = req->num_timeout;
+  data->uid = from_kuid_munged(&init_user_ns, sock_i_uid(req->rsk_listener));
+  data->timeout = 0;
+  data->inode = 0;
+  data->refcount = 0;
+  data->sk = req;
+
+  data->rto = 0;
+  data->ato = 0;
+  data->qack_pingpong = 0;
+  data->snd_cwnd = 0;
+  data->snd_ssthresh_or_fqlen = 0;
+}
+
 static void count (struct net* net, struct tcp_req* req){
 
   struct inet_hashinfo* hinfo = net->ipv4.tcp_death_row.hashinfo;
   unsigned int idx = 0;
+  int st;
 
   for (unsigned int i = 0; i <= hinfo->lhash2_mask; i++) {
 
@@ -126,8 +188,16 @@ static void count (struct net* net, struct tcp_req* req){
 
     sk_nulls_for_each(sk, node, &ilb2->nulls_head) { 
       if (!net_eq(sock_net(sk), net)) continue; 
-      if (sk->sk_family != AF_UNSPEC) continue; 
-      if (idx++ < req->offset) continue; 
+      if (sk->sk_family != AF_INET) continue; 
+      if (idx++ < req->offset) continue;
+
+      st = inet_sk_state_load(sk);
+      if (st != TCP_LISTEN) continue; 
+
+      if (req->got >= TCP_MAX_BATCH) { 
+        req->more = 1; 
+        break; 
+      }
       fill_stats(sk, &req->rows[req->got], (int)(req->offset + req->got)); 
       req->got++; 
     } 
@@ -144,8 +214,26 @@ static void count (struct net* net, struct tcp_req* req){
 		spin_lock_bh(lock);
 		sk_nulls_for_each(sk, node, &hinfo->ehash[i].chain) {
 			if (!net_eq(sock_net(sk), net)) continue; 
-      if (sk->sk_family != AF_UNSPEC) continue; 
+      if (sk->sk_family != AF_INET) continue; 
       if (idx++ < req->offset) continue; 
+      if (req->got >= TCP_MAX_BATCH) { 
+        req->more = 1; 
+        break; 
+      }
+
+      st = inet_sk_state_load(sk);
+      if (st == TCP_NEW_SYN_RECV) {
+        fill_stats_new_recv((struct request_sock *)sk, &req->rows[req->got], (int)(req->offset + req->got));
+        continue;
+      }
+
+      if (st == TCP_TIME_WAIT) {
+        struct inet_timewait_sock *tw = inet_twsk(sk);
+        fill_stats_timewait(tw, &req->rows[req->got], (int)(req->offset + req->got));
+        req->got++;
+        continue;
+      }
+
       fill_stats(sk, &req->rows[req->got], (int)(req->offset + req->got)); 
       req->got++; 
 		}

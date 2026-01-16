@@ -10,7 +10,7 @@
 static void print_row(const struct tcp_data *r)
 {
     printf("%4d: %08X:%04X %08X:%04X %02X %08X:%08X %02X:%08lX "
-			"%08X %5u %8d %lu %d %pK %lu %lu %u %u %d\n",
+			"%08X %5u %8d %lu %d %p %lu %lu %u %u %d\n",
            r->sl,
            r->src, r->srcp,
            r->dst, r->dstp,
@@ -32,9 +32,30 @@ static void print_row(const struct tcp_data *r)
            r->snd_ssthresh_or_fqlen);
 }
 
+static void print_timewait(const struct tcp_data *r)
+{
+    printf("%4d: %08X:%04X %08X:%04X"
+		" %02X %08X:%08X %02X:%08lX %08X %5d %8d %ld %d %p\n",
+           r->sl,
+           r->src, r->srcp,
+           r->dst, r->dstp,
+           r->state,
+           r->tx_queue,
+           r->rx_queue,
+           r->timer_active,
+           r->tm_when,
+           r->retrnsmt,
+           r->uid,
+           r->timeout,
+           r->inode,
+           r->refcount,
+           r->sk);
+}
+
 int main(int argc, char **argv){
     int pid;
     int fd;
+    printf("1111\n");
 
     if (argc == 1){
         pid = 0;
@@ -51,6 +72,7 @@ int main(int argc, char **argv){
         return 1;
     }
 
+    printf("222222\n");
     struct tcp_req* req = calloc(1, sizeof(struct tcp_req));
     req->pid = pid;
     req->offset = 0;
@@ -65,6 +87,10 @@ int main(int argc, char **argv){
         }
 
         for (unsigned int i = 0; i < req->got; i++) {
+            if ((&req->rows[i])->state == 6 || (&req->rows[i])->state == 3){
+                print_timewait(&req->rows[i]);
+                continue;
+            }
             print_row(&req->rows[i]);
         }
 
