@@ -4,6 +4,12 @@
 #include <linux/cdev.h>
 #include <linux/err.h>
 
+#include <net/net_namespace.h>
+#include <net/sock.h>
+#include <net/inet_sock.h>
+#include <net/tcp.h>
+#include <net/inet_hashtables.h>
+
 #include "../common/vtkm.h"
 
 #define MODULE_NAME "vtkm"
@@ -34,15 +40,122 @@ static struct net* get_net_by_pid(int pid)
     return net;
 }
 
-static int count (struct net* net, struct tcp_req* req){
-  struct inet_hashinfo info = net->ipv4.tcp_death_row.hashinfo;
-  
+static void fill_stats(struct sock* sk, struct tcp_data* data, int sl){
+
+  int timer_active;
+	unsigned long timer_expires;
+	const struct tcp_sock *tp = tcp_sk(sk);
+	const struct inet_connection_sock *icsk = inet_csk(sk);
+	const struct inet_sock *inet = inet_sk(sk);
+	const struct fastopen_queue *fastopenq = &icsk->icsk_accept_queue.fastopenq;
+
+	__be32 dest = inet->inet_daddr;
+	__be32 src = inet->inet_rcv_saddr;
+	__u16 destp = ntohs(inet->inet_dport);
+	__u16 srcp = ntohs(inet->inet_sport);
+
+  data->sl = sl;
+  data->src = src;
+  data->dst = dest;
+  data->srcp = srcp;
+  data->dstp = destp;
+
+	int rx_queue;
+	int state;
+
+	if (icsk->icsk_pending == ICSK_TIME_RETRANS ||
+	    icsk->icsk_pending == ICSK_TIME_REO_TIMEOUT ||
+	    icsk->icsk_pending == ICSK_TIME_LOSS_PROBE) {
+		timer_active	= 1;
+		timer_expires	= icsk->icsk_timeout;
+	} else if (icsk->icsk_pending == ICSK_TIME_PROBE0) {
+		timer_active	= 4;
+		timer_expires	= icsk->icsk_timeout;
+	} else if (timer_pending(&sk->sk_timer)) {
+		timer_active	= 2;
+		timer_expires	= sk->sk_timer.expires;
+	} else {
+		timer_active	= 0;
+		timer_expires = jiffies;
+	}
+
+	state = inet_sk_state_load(sk);
+  data->state = state;
+
+	if (state == TCP_LISTEN)
+		rx_queue = READ_ONCE(sk->sk_ack_backlog);
+	else
+		/* Because we don't lock the socket,
+		 * we might find a transient negative value.
+		 */
+		rx_queue = max_t(int, READ_ONCE(tp->rcv_nxt) - READ_ONCE(tp->copied_seq), 0);
+
+  data->tx_queue = READ_ONCE(tp->write_seq) - tp->snd_una;
+  data->rx_queue = rx_queue;
+
+  data->timer_active = timer_active;
+  data->tm_when = jiffies_delta_to_clock_t(timer_expires - jiffies);
+  data->retrnsmt = icsk->icsk_retransmits;
+  data->uid = from_kuid_munged(&init_user_ns, sock_i_uid(sk));
+  data->timeout = icsk->icsk_probes_out;
+  data->inode = sock_i_ino(sk);
+
+  data->refcount = refcount_read(&sk->sk_refcnt);
+  data->sk = sk;
+  data->rto = jiffies_to_clock_t(icsk->icsk_rto);
+  data->ato = jiffies_to_clock_t(icsk->icsk_ack.ato);
+  data->qack_pingpong = (icsk->icsk_ack.quick << 1) | inet_csk_in_pingpong_mode(sk);
+  data->snd_cwnd = tcp_snd_cwnd(tp);
+  data->snd_ssthresh_or_fqlen = (state == TCP_LISTEN ?
+		    fastopenq->max_qlen :
+		    (tcp_in_initial_slowstart(tp) ? -1 : tp->snd_ssthresh));
+}
+
+static void count (struct net* net, struct tcp_req* req){
+
+  struct inet_hashinfo* hinfo = net->ipv4.tcp_death_row.hashinfo;
+  unsigned int idx = 0;
+
+  for (unsigned int i = 0; i <= hinfo->lhash2_mask; i++) {
+
+    struct inet_listen_hashbucket *ilb2;
+    struct sock* sk;
+    struct hlist_nulls_node *node;
+    ilb2 = &hinfo->lhash2[i];
+    spin_lock_bh(&ilb2->lock);
+
+    sk_nulls_for_each(sk, node, &ilb2->nulls_head) { 
+      if (!net_eq(sock_net(sk), net)) continue; 
+      if (sk->sk_family != AF_UNSPEC) continue; 
+      if (idx++ < req->offset) continue; 
+      fill_stats(sk, &req->rows[req->got], (int)(req->offset + req->got)); 
+      req->got++; 
+    } 
+    spin_unlock_bh(&ilb2->lock);
+  }
+
+  for (unsigned int i = 0; i <= hinfo->ehash_mask; i++) {
+		struct sock *sk;
+		struct hlist_nulls_node *node;
+		spinlock_t *lock = inet_ehash_lockp(hinfo, i);
+
+		cond_resched();
+
+		spin_lock_bh(lock);
+		sk_nulls_for_each(sk, node, &hinfo->ehash[i].chain) {
+			if (!net_eq(sock_net(sk), net)) continue; 
+      if (sk->sk_family != AF_UNSPEC) continue; 
+      if (idx++ < req->offset) continue; 
+      fill_stats(sk, &req->rows[req->got], (int)(req->offset + req->got)); 
+      req->got++; 
+		}
+		spin_unlock_bh(lock);
+	}
 }
 
 static long vtkm_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
   struct tcp_req req;
   struct net* net;
-  int res;
 
   if (copy_from_user(&req, (void __user*)arg, sizeof(req)))
     return -EFAULT;
@@ -52,13 +165,10 @@ static long vtkm_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
     return -EINVAL;
 
   rcu_read_lock();
-  res = count(net, &req);
+  count(net, &req);
   rcu_read_unlock();
 
   put_net(net);
-
-  if (res)
-    return res;
 
   if (copy_to_user((void __user*)arg, &req, sizeof(req)))
     return -EFAULT;

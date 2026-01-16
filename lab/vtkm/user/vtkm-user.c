@@ -10,7 +10,7 @@
 static void print_row(const struct tcp_data *r)
 {
     printf("%4d: %08X:%04X %08X:%04X %02X %08X:%08X %02X:%08lX "
-           "%08X %5u %8d %lu %d %lu %lu %u %u %d\n",
+			"%08X %5u %8d %lu %d %pK %lu %lu %u %u %d\n",
            r->sl,
            r->src, r->srcp,
            r->dst, r->dstp,
@@ -23,7 +23,8 @@ static void print_row(const struct tcp_data *r)
            r->uid,
            r->timeout,
            r->inode,
-           r->refcnt,
+           r->refcount,
+           r->sk,
            r->rto,
            r->ato,
            r->qack_pingpong,

@@ -1,7 +1,6 @@
-#define VTKM_DEV_NAME "vtkm"
-
 #include <linux/types.h>
 
+#define VTKM_DEV_NAME "vtkm"
 #define TCP_IOC_MAGIC   't'
 #define TCP_MAX_BATCH   128
 
@@ -33,8 +32,8 @@ struct tcp_data {
     int timeout; 
     unsigned long inode;
 
-    int refcnt;
-
+    int refcount;
+    void* sk;
     unsigned long rto;        
     unsigned long ato;          
     unsigned int qack_pingpong;
