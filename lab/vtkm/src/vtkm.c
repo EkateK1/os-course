@@ -194,7 +194,7 @@ static void count (struct net* net, struct tcp_req* req){
       st = inet_sk_state_load(sk);
       if (st != TCP_LISTEN) continue; 
 
-      if (req->got >= TCP_MAX_BATCH) { 
+      if (req->got >= MAX_ROWS) { 
         req->more = 1; 
         break; 
       }
@@ -216,7 +216,7 @@ static void count (struct net* net, struct tcp_req* req){
 			if (!net_eq(sock_net(sk), net)) continue; 
       if (sk->sk_family != AF_INET) continue; 
       if (idx++ < req->offset) continue; 
-      if (req->got >= TCP_MAX_BATCH) { 
+      if (req->got >= MAX_ROWS) { 
         req->more = 1; 
         break; 
       }
@@ -228,7 +228,7 @@ static void count (struct net* net, struct tcp_req* req){
       }
 
       if (st == TCP_TIME_WAIT) {
-        struct inet_timewait_sock *tw = inet_twsk(sk);
+        struct inet_timewait_sock* tw = inet_twsk(sk);
         fill_stats_timewait(tw, &req->rows[req->got], (int)(req->offset + req->got));
         req->got++;
         continue;
@@ -246,11 +246,11 @@ static long vtkm_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
   struct net* net;
 
   if (copy_from_user(&req, (void __user*)arg, sizeof(req)))
-    return -EFAULT;
+    return -1;
 
   net = get_net_by_pid(req.pid);
   if (!net)
-    return -EINVAL;
+    return -1;
 
   rcu_read_lock();
   count(net, &req);
@@ -259,7 +259,7 @@ static long vtkm_ioctl(struct file *file, unsigned int cmd, unsigned long arg){
   put_net(net);
 
   if (copy_to_user((void __user*)arg, &req, sizeof(req)))
-    return -EFAULT;
+    return -1;
 
   return 0;
 }

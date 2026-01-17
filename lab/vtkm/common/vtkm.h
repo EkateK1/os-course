@@ -1,44 +1,40 @@
 #include <linux/types.h>
 
 #define VTKM_DEV_NAME "vtkm"
-#define TCP_IOC_MAGIC   't'
-#define TCP_MAX_BATCH   128
+#define IOC_NUM 't'
+#define MAX_ROWS 128
 
-#define TCP_IOC_COMMAND _IOWR(TCP_IOC_MAGIC, 1, struct tcp_req)
+#define TCP_IOC_COMMAND _IOWR(IOC_NUM, 1, struct tcp_req)
 
 struct tcp_data {
-    int sl;
+    int sl; // line number
 
-    /* local_address / rem_address */
-    __be32 src;
-    __be32 dst;
-    __u16 srcp;
-    __u16 dstp;
+    __be32 src; // local addres
+    __be32 dst; // remote addres
+    __u16 srcp; // local port
+    __u16 dstp; // remote port
 
-    int state;
+    int state; // tcp state
 
-    /* queues */
-    __u32 tx_queue; 
-    int rx_queue;
+    __u32 tx_queue; // размер передающией очереди 
+    int rx_queue; // размер приемной очереди
 
-    /* timer */
-    int timer_active;
-    unsigned long tm_when;
+    int timer_active; // идентификатор активного таймера
+    unsigned long tm_when; // через сколько сработает активный таймер
 
-    /* retransmits */
-    unsigned int retrnsmt;
+    unsigned int retrnsmt; // повторные отправки данных
 
     unsigned int uid;
-    int timeout; 
-    unsigned long inode;
+    int timeout;
+    unsigned long inode; 
 
-    int refcount;
-    void* sk;
-    unsigned long rto;        
-    unsigned long ato;          
-    unsigned int qack_pingpong;
-    unsigned int snd_cwnd;
-    int snd_ssthresh_or_fqlen;
+    int refcount; // счетчик ссылок на сокет
+    void* sk; // адрес сокета
+    unsigned long rto; // таймаут ретрансмитов  
+    unsigned long ato; // задержка аск     
+    unsigned int qack_pingpong; // сколько осталось быстрых аск + режим пинпонга(?)
+    unsigned int snd_cwnd; // максимальное количество неподтвержденных пакетов
+    int snd_ssthresh_or_fqlen; // от состояния
 };
 
 struct tcp_req {
@@ -47,6 +43,5 @@ struct tcp_req {
 
     unsigned int got;
     unsigned int more;
-
-    struct tcp_data rows[TCP_MAX_BATCH];
+    struct tcp_data rows[MAX_ROWS];
 };
