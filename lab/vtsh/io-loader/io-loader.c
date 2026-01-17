@@ -11,6 +11,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "vtpc.h"
+
 #define BLOCK_SIZE 4096
 
 struct params {
@@ -164,7 +166,7 @@ bool random_lseek(
     position = range_min + rand() % range_max;
   }
 
-  off_t offset_res = lseek(file_descr, position, SEEK_SET);
+  off_t offset_res = vtpc_lseek(file_descr, position, SEEK_SET);
 
   if (offset_res == -1)
     return false;
@@ -173,10 +175,10 @@ bool random_lseek(
 }
 
 bool sequence_read(int file_descr, long block_size, char** buf) {
-  int res = read(file_descr, *buf, block_size);
+  int res = vtpc_read(file_descr, *buf, block_size);
   if (res != -1) {
     (*buf)[block_size] = '\0';
-    printf("%s\n", *buf);
+    //  printf("%s\n", *buf);
   } else {
     printf("%s\n", strerror(errno));
   }
@@ -185,9 +187,9 @@ bool sequence_read(int file_descr, long block_size, char** buf) {
 
 bool sequence_write(int file_descr, long block_size, char** buf) {
   random_bytes(*buf, block_size);
-  int res = write(file_descr, *buf, block_size);
+  int res = vtpc_write(file_descr, *buf, block_size);
   if (res != -1) {
-    printf("Succesfull writing\n");
+    //  printf("Succesfull writing\n");
   } else {
     printf("%s\n", strerror(errno));
   }
@@ -245,7 +247,7 @@ bool rw_simple(int file_descr, struct params* params) {
 
   if ((params->type == 's') && (params->range_min != 0)) {
     if (params->range_min != 0) {
-      off_t offset_res = lseek(file_descr, params->range_min, SEEK_SET);
+      off_t offset_res = vtpc_lseek(file_descr, params->range_min, SEEK_SET);
       if (offset_res == -1) {
         free(buf);
         return false;
@@ -349,8 +351,8 @@ bool direct_sequence_read(
     fprintf(stderr, "pread failed: %s\n", strerror(errno));
     return false;
   } else {
-    (*buf)[offset + block_size] = '\0';
-    printf("%s\n", *buf + offset);
+    // (*buf)[offset + block_size] = '\0';
+    //  printf("%s\n", *buf + offset);
     return true;
   }
 }
@@ -359,28 +361,35 @@ bool direct_sequence_write(
     int file_descr, char** buf, long block_size, off_t offset, size_t buf_size
 ) {
   ssize_t n = -1;
-  off_t read_offset = offset;
-  if (offset == 0 || offset % BLOCK_SIZE == 0) {
-    n = pread(file_descr, *buf, buf_size, read_offset);
+  off_t read_offset;
+  if (offset % BLOCK_SIZE == 0) {
+    read_offset = offset;
   } else {
     read_offset = (offset / BLOCK_SIZE) * BLOCK_SIZE;
-    n = pread(file_descr, *buf, buf_size, read_offset);
   }
+
+  size_t buf_offset = (size_t)(offset - read_offset);
+
+  n = pread(file_descr, *buf, buf_size, read_offset);
   if (n < 0) {
     fprintf(stderr, "pread failed: %s\n", strerror(errno));
     return false;
   }
 
-  random_bytes(*buf + offset, block_size);
-  n = pwrite(file_descr, *buf, buf_size, read_offset);
+  if (buf_offset + block_size > buf_size) {
+    fprintf(stderr, "direct_sequence_write: block does not fit into buffer\n");
+    return false;
+  }
 
+  random_bytes(*buf + buf_offset, block_size);
+
+  n = pwrite(file_descr, *buf, buf_size, read_offset);
   if (n < 0) {
     fprintf(stderr, "pwrite failed: %s\n", strerror(errno));
     return false;
-  } else {
-    printf("Write %zd bytes\n", block_size);
-    return true;
   }
+
+  return true;
 }
 
 bool direct_sequence_call(
@@ -426,13 +435,8 @@ bool direct_random_call(
 }
 
 bool rw_direct(int file_descr, struct params* params) {
-  size_t buf_size;
-  if (params->block_size % BLOCK_SIZE != 0) {
-    int n = params->block_size / BLOCK_SIZE;
-    buf_size = BLOCK_SIZE * (n + 1);
-  } else {
-    buf_size = params->block_size;
-  }
+  size_t pages = (needed + BLOCK_SIZE - 1) / BLOCK_SIZE;
+  size_t buf_size = pages * BLOCK_SIZE;
 
   void* buf_raw;
   int res = posix_memalign(&buf_raw, BLOCK_SIZE, buf_size + 1);
@@ -542,7 +546,12 @@ int main(int arg, char** args) {
     flags |= O_DIRECT;
 
   mode_t mode = 0644;
-  int file_descr = open(params.file, flags, mode);
+  int file_descr;
+  if (params.direct) {
+    file_descr = open(params.file, flags, mode);
+  } else {
+    file_descr = vtpc_open(params.file, flags, mode);
+  }
   if (file_descr < 0) {
     printf("%s\n", strerror(errno));
     return 1;
@@ -560,13 +569,20 @@ int main(int arg, char** args) {
     if (params.direct) {
       rw_direct(file_descr, &params);
     } else {
+      vtpc_lseek(file_descr, 0, SEEK_SET);
       rw_simple(file_descr, &params);
     }
-    printf("\n");
+    // printf("\n");
   }
-  close(file_descr);
+  if (params.direct) {
+    close(file_descr);
+  } else {
+    vtpc_close(file_descr);
+  }
   return 0;
 }
 
-// io-loader rw=read block_size=2 block_count=3 file=io-loader/myfile.txt
-// range=0-0 direct=on type=random
+// /workspaces/os-course/lab/vtsh/build/io-loader/io-loader rw=write
+// block_size=15000 block_count=90
+// file=/workspaces/os-course/lab/vtsh/io-loader/myfile.txt range=0-0 direct=off
+// type=sequence
